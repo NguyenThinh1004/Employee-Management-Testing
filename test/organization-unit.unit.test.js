@@ -16,6 +16,20 @@ function validUnit(overrides = {}) {
   };
 }
 
+function makeRepeatedText(length) {
+  return 'A'.repeat(length);
+}
+
+function makeEmail(length) {
+  const suffix = '@example.com';
+  return `${'a'.repeat(length - suffix.length)}${suffix}`;
+}
+
+function makeWebsite(length) {
+  const prefix = 'https://a.co/';
+  return `${prefix}${'x'.repeat(length - prefix.length)}`;
+}
+
 function errorsFor(overrides, field) {
   return validateOrganizationUnit(validUnit(overrides))
     .filter((error) => error.field === field);
@@ -90,7 +104,7 @@ async function postToRouter(body, database) {
   return { response, error };
 }
 
-test('validator: required fields reject missing, wrong-type, and blank values', () => {
+test('[UNIT][validator][TC09/TC17/TC34/TC38/TC53] required fields reject missing, wrong-type, and blank values', () => {
   const cases = [
     [{ unitName: '' }, 'unitName'],
     [{ unitCode: '  ' }, 'unitCode'],
@@ -104,7 +118,7 @@ test('validator: required fields reject missing, wrong-type, and blank values', 
   }
 });
 
-test('validator: null input falls back to an empty object and reports required fields', () => {
+test('[UNIT][validator] null input falls back to an empty object and reports required fields', () => {
   const errors = validateOrganizationUnit(null);
   assert.deepEqual(
     errors.map((error) => error.field),
@@ -112,19 +126,25 @@ test('validator: null input falls back to an empty object and reports required f
   );
 });
 
-test('validator: unit name and code cover format and length uses', () => {
+test('[UNIT][validator][TC11-TC15/TC23-TC29] unit name and code cover control characters, format, and boundaries', () => {
   assert.match(errorsFor({ unitName: 'Tên\nđơn vị' }, 'unitName')[0].message, /định dạng/);
-  assert.match(errorsFor({ unitName: 'A'.repeat(101) }, 'unitName')[0].message, /100/);
-  assert.match(errorsFor({ unitCode: 'A'.repeat(21) }, 'unitCode')[0].message, /20/);
+  assert.deepEqual(errorsFor({ unitName: makeRepeatedText(99) }, 'unitName'), []);
+  assert.deepEqual(errorsFor({ unitName: makeRepeatedText(100) }, 'unitName'), []);
+  assert.match(errorsFor({ unitName: makeRepeatedText(101) }, 'unitName')[0].message, /100/);
+  assert.deepEqual(errorsFor({ unitCode: makeRepeatedText(19) }, 'unitCode'), []);
+  assert.deepEqual(errorsFor({ unitCode: makeRepeatedText(20) }, 'unitCode'), []);
+  assert.match(errorsFor({ unitCode: makeRepeatedText(21) }, 'unitCode')[0].message, /20/);
   assert.match(errorsFor({ unitCode: 'P.TOCHUC' }, 'unitCode')[0].message, /định dạng/);
   assert.deepEqual(errorsFor({ unitCode: 'P_TOCHUC-01' }, 'unitCode'), []);
 });
 
-test('validator: unit type, email, and phone distinguish valid and invalid inputs', () => {
+test('[UNIT][validator][TC30-TC63] unit type, email, and phone distinguish valid, invalid, and boundary inputs', () => {
   assert.match(errorsFor({ unitType: 'Trung tâm' }, 'unitType')[0].message, /định dạng/);
   assert.deepEqual(errorsFor({ unitType: 'Phòng' }, 'unitType'), []);
 
-  assert.match(errorsFor({ email: 'a'.repeat(90) + '@example.com' }, 'email')[0].message, /100/);
+  assert.deepEqual(errorsFor({ email: makeEmail(99) }, 'email'), []);
+  assert.deepEqual(errorsFor({ email: makeEmail(100) }, 'email'), []);
+  assert.match(errorsFor({ email: makeEmail(101) }, 'email')[0].message, /100/);
   assert.match(errorsFor({ email: 'to chuc@example.com' }, 'email')[0].message, /định dạng/);
   assert.match(errorsFor({ email: 'not-an-email' }, 'email')[0].message, /định dạng/);
   assert.deepEqual(errorsFor({ email: 'tochuc@example.com' }, 'email'), []);
@@ -133,7 +153,7 @@ test('validator: unit type, email, and phone distinguish valid and invalid input
   assert.deepEqual(errorsFor({ phone: '0912345678' }, 'phone'), []);
 });
 
-test('validator: optional website and address are skipped when omitted or empty', () => {
+test('[UNIT][validator][TC64/TC77/TC95] optional website and address are skipped when omitted or empty', () => {
   assert.deepEqual(validateOrganizationUnit(validUnit()), []);
   assert.deepEqual(
     validateOrganizationUnit(validUnit({ website: undefined, address: undefined })),
@@ -141,30 +161,36 @@ test('validator: optional website and address are skipped when omitted or empty'
   );
 });
 
-test('validator: website covers invalid type, whitespace, length, URL parsing, and protocols', () => {
+test('[UNIT][validator][TC65-TC76] website covers invalid type, whitespace, protocol, and boundaries', () => {
   assert.match(errorsFor({ website: 42 }, 'website')[0].message, /định dạng/);
   assert.match(errorsFor({ website: 'https://example.com/a b' }, 'website')[0].message, /định dạng/);
-  assert.match(errorsFor({ website: 'https://' + 'a'.repeat(2042) }, 'website')[0].message, /2048/);
+  assert.deepEqual(errorsFor({ website: makeWebsite(2047) }, 'website'), []);
+  assert.deepEqual(errorsFor({ website: makeWebsite(2048) }, 'website'), []);
+  assert.match(errorsFor({ website: makeWebsite(2049) }, 'website')[0].message, /2048/);
   assert.match(errorsFor({ website: 'not-a-url' }, 'website')[0].message, /định dạng/);
   assert.match(errorsFor({ website: 'ftp://example.com' }, 'website')[0].message, /định dạng/);
   assert.deepEqual(errorsFor({ website: 'http://example.com' }, 'website'), []);
   assert.deepEqual(errorsFor({ website: 'https://example.com' }, 'website'), []);
 });
 
-test('validator: address and parent ID cover optional, length, and validity paths', () => {
+test('[UNIT][validator][TC78-TC84 + parentUnitId branches] address and parent ID cover optional, boundary, and validity paths', () => {
   assert.match(errorsFor({ address: 12 }, 'address')[0].message, /định dạng/);
   assert.match(errorsFor({ address: ' ' }, 'address')[0].message, /định dạng/);
-  assert.match(errorsFor({ address: 'A'.repeat(201) }, 'address')[0].message, /200/);
+  assert.deepEqual(errorsFor({ address: makeRepeatedText(199) }, 'address'), []);
+  assert.deepEqual(errorsFor({ address: makeRepeatedText(200) }, 'address'), []);
+  assert.match(errorsFor({ address: makeRepeatedText(201) }, 'address')[0].message, /200/);
   assert.deepEqual(errorsFor({ address: '123 Main St' }, 'address'), []);
 
   assert.deepEqual(errorsFor({ parentUnitId: null }, 'parentUnitId'), []);
   assert.deepEqual(errorsFor({ parentUnitId: '12' }, 'parentUnitId'), []);
   assert.match(errorsFor({ parentUnitId: 'abc' }, 'parentUnitId')[0].message, /không hợp lệ/);
+  assert.match(errorsFor({ parentUnitId: '1.5' }, 'parentUnitId')[0].message, /không hợp lệ/);
   assert.match(errorsFor({ parentUnitId: 1.5 }, 'parentUnitId')[0].message, /không hợp lệ/);
+  assert.match(errorsFor({ parentUnitId: '0' }, 'parentUnitId')[0].message, /không hợp lệ/);
   assert.match(errorsFor({ parentUnitId: 0 }, 'parentUnitId')[0].message, /không hợp lệ/);
 });
 
-test('router: rejects malformed request bodies without accessing the database', async () => {
+test('[UNIT][router] malformed request body returns 400 and does not touch database', async () => {
   for (const body of [null, 'text', []]) {
     const database = createDatabase();
     const { response, error } = await postToRouter(body, database);
@@ -176,7 +202,7 @@ test('router: rejects malformed request bodies without accessing the database', 
   }
 });
 
-test('router: validation errors return 400 without database access', async () => {
+test('[UNIT][router] validation failure returns 400 and does not write/read database', async () => {
   const database = createDatabase();
   const { response, error } = await postToRouter(validUnit({ email: 'bad' }), database);
 
@@ -186,7 +212,7 @@ test('router: validation errors return 400 without database access', async () =>
   assert.deepEqual(database.calls, []);
 });
 
-test('router: creates a unit without a parent and maps optional empty fields to null', async () => {
+test('[UNIT][router][TC01/TC02/TC05/TC06/TC07/TC95] create without parent normalizes request and returns DB row', async () => {
   const createdUnit = { id: 11, unitName: 'Phòng Tổ chức', unitCode: 'P_TOCHUC_UNIT' };
   const database = createDatabase({ createdUnit });
   const { response, error } = await postToRouter(
@@ -196,6 +222,7 @@ test('router: creates a unit without a parent and maps optional empty fields to 
 
   assert.equal(error, undefined);
   assert.equal(response.statusCode, 201);
+  assert.equal(response.body.message, 'Tạo đơn vị thành công');
   assert.equal(response.body.unit, createdUnit);
   assert.equal(database.calls.length, 2);
   assert.equal(database.calls[0].operation, 'run');
@@ -213,7 +240,7 @@ test('router: creates a unit without a parent and maps optional empty fields to 
   assert.equal(database.calls[1].value, 11);
 });
 
-test('router: checks an existing parent and normalizes its ID before querying and inserting', async () => {
+test('[UNIT][router][TC03] create with parent checks parent existence and normalizes parent ID', async () => {
   const database = createDatabase({ parent: { id: 7 } });
   const { response, error } = await postToRouter(
     validUnit({ parentUnitId: '7' }),
@@ -226,7 +253,7 @@ test('router: checks an existing parent and normalizes its ID before querying an
   assert.equal(database.calls[1].values[0], 7);
 });
 
-test('router: rejects a parent that does not exist without inserting', async () => {
+test('[UNIT][router] parent not found returns 400 and skips insert', async () => {
   const database = createDatabase({ parent: undefined });
   const { response, error } = await postToRouter(
     validUnit({ parentUnitId: 99 }),
@@ -240,7 +267,7 @@ test('router: rejects a parent that does not exist without inserting', async () 
   assert.equal(database.calls[0].operation, 'get');
 });
 
-test('router: maps UNIQUE constraint errors to conflict responses', async () => {
+test('[UNIT][router][TC18/TC88/TC105] unique conflict maps to 409', async () => {
   const database = createDatabase({
     insertError: Object.assign(new Error('duplicate'), {
       code: 'SQLITE_CONSTRAINT_UNIQUE'
@@ -253,7 +280,7 @@ test('router: maps UNIQUE constraint errors to conflict responses', async () => 
   assert.equal(response.body.message, 'Mã đơn vị đã tồn tại');
 });
 
-test('router: forwards non-UNIQUE database errors to Express', async () => {
+test('[UNIT][router] non-UNIQUE database errors are forwarded to Express', async () => {
   const databaseError = Object.assign(new Error('database unavailable'), {
     code: 'SQLITE_BUSY'
   });
